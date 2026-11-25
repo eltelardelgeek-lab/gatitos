@@ -72,6 +72,7 @@ textarea.in{min-height:70px;resize:vertical}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .opts{display:flex;gap:8px}.opts label{flex:1}.opts input{display:none}
 .opts span{display:block;text-align:center;border:1.5px solid var(--line);background:#fff;border-radius:14px;padding:11px 6px;font-weight:800;cursor:pointer;font-size:14px}
+.opts input:disabled+span{opacity:.4;cursor:not-allowed}
 .opts input:checked+span{background:var(--acc);border-color:var(--acc);color:#fff}
 .sw{display:flex;align-items:center;gap:10px;font-weight:800;margin-top:12px;cursor:pointer}.sw input{width:22px;height:22px;accent-color:var(--acc)}
 .sheet-wrap{position:fixed;inset:0;z-index:100;display:flex;align-items:flex-end;justify-content:center}
@@ -150,7 +151,10 @@ const usosDe=g=>S.usos.filter(u=>u.gato===g);
 const gastosDe=g=>S.gastos.filter(x=>x.gato===g);
 const tot=x=>x.cantidad*x.precio;
 const sum=a=>a.reduce((s,x)=>s+x,0);
-function subvStats(s){const u=S.usos.filter(x=>x.subv===s.id);const gastado=sum(u.map(x=>x.precio));return{u,gastado,queda:s.importe-gastado,pct:s.importe>0?Math.min(100,gastado/s.importe*100):0}}
+const r2=n=>Math.round(n*100)/100;
+function part(x){return x.subv&&subv(x.subv)?Math.min(x.importeSubv||0,tot(x)):0}
+function activeSubv(){const L=S.subv;return L.filter(s=>subvStats(s).queda>0).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''))[0]||L[L.length-1]||null}
+function subvStats(s){const u=S.usos.filter(x=>x.subv===s.id);const g=S.gastos.filter(x=>x.subv===s.id&&part(x)>0);const gastado=sum(u.map(x=>x.precio))+sum(g.map(part));return{u,g,gastado,queda:s.importe-gastado,pct:s.importe>0?Math.min(100,gastado/s.importe*100):0}}
 function colStats(c){const g=S.gatos.filter(x=>x.colonia===c.id);return{g,total:g.length,m:g.filter(x=>x.sexo==='Macho').length,h:g.filter(x=>x.sexo==='Hembra').length,est:g.filter(x=>x.esterilizado).length,pend:g.filter(x=>!x.esterilizado).length,hPend:g.filter(x=>!x.esterilizado&&x.sexo==='Hembra').length,crias:g.filter(x=>x.origen==='cria').length}}
 function inPeriod(f,m){if(m==='all')return true;if(!f)return false;const lim=new Date();lim.setMonth(lim.getMonth()-m);return new Date(f)>=lim}
 /* ---------- estado UI ---------- */
@@ -183,7 +187,7 @@ function render(){
 function vInicio(){
   const G=S.gatos,est=G.filter(g=>g.esterilizado).length,pend=G.length-est;
   const sub=sum(S.subv.map(s=>s.importe)),gas=sum(S.subv.map(s=>subvStats(s).gastado));
-  const propios=sum(S.gastos.map(tot));
+  const propios=sum(S.gastos.map(x=>tot(x)-part(x)));
   const riesgo=S.colonias.map(c=>({c,n:colStats(c).hPend})).filter(x=>x.n>0).sort((a,b)=>b.n-a.n).slice(0,3);
   const act=reproRank(12)[0];
   return`<div class="banner" style="background-image:url(${A.wid[S.settings.banner]})"><div><h2>¡Hola! 🐾</h2><p>${G.length} gatos en ${S.colonias.length} colonias</p></div></div>
@@ -235,7 +239,7 @@ function openGato(id,tab='datos'){
     <div class="seg"><button data-a="gtab" data-t="datos" class="${ctl.tab==='datos'?'on':''}">Datos</button><button data-a="gtab" data-t="serv" class="${ctl.tab==='serv'?'on':''}">Servicios${us.length?' ('+us.length+')':''}</button><button data-a="gtab" data-t="gastos" class="${ctl.tab==='gastos'?'on':''}">Gastos${gs.length?' ('+gs.length+')':''}</button></div>
     ${ctl.tab==='datos'?gatoForm(g,false)+`<button class="btn danger block" style="margin-top:8px" data-a="delGato" data-id="${id}">Eliminar gato</button>`:''}
     ${ctl.tab==='serv'?`<div class="card" style="margin-bottom:10px"><div class="kv"><span>Pagado con subvención</span><b class="money">${eur(tS)}</b></div></div>${us.length?us.map(u=>`<div class="item" style="cursor:default">${ic(subv(u.subv)?.icon||1,'s')}<div class="grow"><b>${esc(u.nombre)}</b><small>${esc(subv(u.subv)?.nombre||'')} · ${fdate(u.fecha)}</small></div><b class="money">${eur(u.precio)}</b><button class="x" data-a="delUso" data-id="${u.id}" aria-label="Quitar">✕</button></div>`).join(''):`<div class="empty">${ic(1,'m')}<div>Este gato aún no tiene servicios subvencionados.</div></div>`}<button class="btn block" data-a="addUso" data-id="${id}">＋ Añadir servicio subvencionado</button>`:''}
-    ${ctl.tab==='gastos'?`<div class="card" style="margin-bottom:10px"><div class="kv"><span>Gastos del gato</span><b class="money">${eur(tG)}</b></div></div>${gs.length?gs.map(x=>`<div class="item" style="cursor:default">${ic(S.conceptos.find(k=>k.id===x.concepto)?.icon||77,'s')}<div class="grow"><b>${esc(x.nombre)}</b><small>${x.cantidad} × ${eur(x.precio)} · ${fdate(x.fecha)}</small></div><b class="money">${eur(tot(x))}</b><button class="x" data-a="delGasto" data-id="${x.id}" aria-label="Quitar">✕</button></div>`).join(''):`<div class="empty">${ic(77,'m')}<div>Sin gastos asignados.</div></div>`}<button class="btn block" data-a="addGasto" data-gato="${id}">＋ Añadir gasto</button>`:''}`;
+    ${ctl.tab==='gastos'?`<div class="card" style="margin-bottom:10px"><div class="kv"><span>Gastos del gato</span><b class="money">${eur(tG)}</b></div></div>${gs.length?gs.map(x=>`<div class="item" style="cursor:default">${ic(S.conceptos.find(k=>k.id===x.concepto)?.icon||77,'s')}<div class="grow"><b>${esc(x.nombre)}</b><small>${x.cantidad} × ${eur(x.precio)} · ${fdate(x.fecha)}</small><div style="margin-top:3px">${pagoPill(x)}</div></div><b class="money">${eur(tot(x))}</b><button class="x" data-a="delGasto" data-id="${x.id}" aria-label="Quitar">✕</button></div>`).join(''):`<div class="empty">${ic(77,'m')}<div>Sin gastos asignados.</div></div>`}<button class="btn block" data-a="addGasto" data-gato="${id}">＋ Añadir gasto</button>`:''}`;
   });
   c.tab=tab;c.render();
 }
@@ -257,16 +261,25 @@ function openAddUso(gid){
 /* ---------- gastos ---------- */
 function openGasto(opts={}){
   const x=opts.id?S.gastos.find(k=>k.id===opts.id):null;const gid=x?x.gato:(opts.gato||'');
+  const k0=x?S.conceptos.find(k=>k.id===x.concepto):S.conceptos[0];const xp=x?part(x):0;
+  const pago=x?(xp>0?'subv':'personal'):((k0&&k0.pago==='subv'&&S.subv.length)?'subv':'personal');
+  const sid=x&&x.subv?x.subv:(activeSubv()?.id||'');const imp=x?xp:0;const auto=x&&xp>0?'0':'1';
   const c=openSheet(()=>`${head(x?'Editar gasto':'Registrar gasto')}<form data-f="gasto" ${x?`data-id="${x.id}"`:''}>
   <label class="f">Concepto</label><select class="in" name="concepto" data-a="gConc">${S.conceptos.map(k=>`<option value="${k.id}" ${x&&x.concepto===k.id?'selected':''}>${esc(k.nombre)}${k.precio?' · '+eur(k.precio):''}</option>`).join('')}<option value="" ${x&&!x.concepto?'selected':''}>Otro (escribir)…</option></select>
   <div id="otro" style="${(x&&!x.concepto)||!S.conceptos.length?'':'display:none'}"><label class="f">Nombre del gasto</label><input class="in" name="nombre" value="${x&&!x.concepto?esc(x.nombre):''}"></div>
   <div class="two"><div><label class="f">Cantidad</label><input class="in" name="cantidad" inputmode="decimal" value="${x?dec(x.cantidad):1}"></div><div><label class="f">Precio unidad (€)</label><input class="in" name="precio" inputmode="decimal" value="${dec(x?x.precio:(S.conceptos[0]?.precio||0))}"></div></div>
   <label class="f">Fecha</label><input class="in" type="date" name="fecha" value="${x?x.fecha:today()}">
+  <label class="f">¿Quién lo paga?</label><div class="opts"><label><input type="radio" name="pago" value="personal" ${pago==='personal'?'checked':''}><span>👛 Aportación personal</span></label><label><input type="radio" name="pago" value="subv" ${pago==='subv'?'checked':''} ${S.subv.length?'':'disabled'}><span>🏛 Subvención</span></label></div>
+  ${S.subv.length?'':'<small style="color:var(--muted);font-weight:700">Crea primero una subvención para poder elegirla.</small>'}
+  <div id="subvbox" style="display:none"><label class="f">Subvención</label><select class="in" name="subv">${S.subv.map(z=>`<option value="${z.id}" ${z.id===sid?'selected':''}>${esc(z.nombre)} · queda ${eur(subvStats(z).queda)}</option>`).join('')}</select>
+  <label class="f">Importe que paga la subvención (€)</label><div class="row"><input class="in" name="importeSubv" inputmode="decimal" value="${dec(imp)}" data-auto="${auto}"><button type="button" class="btn ghost sm" data-a="subvTodo">Todo</button></div>
+  <small style="color:var(--muted);font-weight:700">El resto lo pones tú. Puedes repartirlo.</small></div>
+  <div id="pv" class="card" style="margin-top:10px;display:none;font-weight:700;font-size:14px"></div>
   <label class="f">Gato (opcional)</label><select class="in" name="gato"><option value="">— Gasto general / sin gato —</option>${[...S.gatos].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).map(g=>`<option value="${g.id}" ${g.id===gid?'selected':''}>${esc(g.nombre)} (${esc(colNombre(g.colonia))})</option>`).join('')}</select>
   <label class="f">Colonia (si no hay gato)</label><select class="in" name="colonia"><option value="">—</option>${S.colonias.map(k=>`<option value="${k.id}" ${x&&x.colonia===k.id?'selected':''}>${esc(k.nombre)}</option>`).join('')}</select>
   <label class="f">Nota</label><input class="in" name="nota" value="${x?esc(x.nota):''}">
   <button class="btn block" style="margin-top:16px">Guardar</button>${x?`<button type="button" class="btn danger block" style="margin-top:8px" data-a="delGasto" data-id="${x.id}">Eliminar</button>`:''}</form>`,{live:false});
-  c.mount=s=>{const f=$('form',s);if(!x&&S.conceptos[0]&&!opts.free)f.precio.value=dec(S.conceptos[0].precio)};
+  c.mount=s=>{const f=$('form',s);gastoPreview(f)};
   c.render();
 }
 function openConcepto(id){
@@ -275,11 +288,13 @@ function openConcepto(id){
   const c=openSheet(()=>`${head(id?'Editar concepto':'Nuevo concepto')}<form data-f="concepto" ${id?`data-id="${id}"`:''}>
   <div style="display:flex;justify-content:center"><button type="button" class="iconbtn" style="width:auto;height:auto;padding:4px;border-radius:26px" data-a="iconPick" data-for="concepto"><img class="ic l" id="iconPrev" src="${A.icons[k.icon]}" alt=""></button></div><input type="hidden" name="icon" value="${k.icon}">
   <label class="f">Concepto</label><input class="in" name="nombre" required value="${esc(k.nombre)}" placeholder="Ej. Pipetas adultos">
+  <label class="f">Se paga normalmente con</label><div class="opts"><label><input type="radio" name="pago" value="personal" ${k.pago!=='subv'?'checked':''}><span>👛 Aportación personal</span></label><label><input type="radio" name="pago" value="subv" ${k.pago==='subv'?'checked':''}><span>🏛 Subvención</span></label></div>
   <div class="two"><div><label class="f">Precio (€)</label><input class="in" name="precio" inputmode="decimal" value="${dec(k.precio)}"></div><div><label class="f">Tipo</label><select class="in" name="tipo">${tipos.map(t=>`<option ${t===k.tipo?'selected':''}>${t}</option>`).join('')}</select></div></div>
   <button class="btn block" style="margin-top:16px">Guardar</button>${id?`<button type="button" class="btn danger block" style="margin-top:8px" data-a="delConcepto" data-id="${id}">Eliminar concepto</button>`:''}</form>`,{live:false});c.render();
 }
+function pagoPill(x){const p=part(x);if(!p)return'<span class="pill">👛 Personal</span>';return p>=tot(x)-0.005?`<span class="pill ok">🏛 Subvención · ${esc(subv(x.subv).nombre)}</span>`:`<span class="pill ok">🏛 ${eur(p)}</span> <span class="pill">👛 ${eur(tot(x)-p)}</span>`}
 function vGastos(){
-  const propios=sum(S.gastos.map(tot)),sv=sum(S.usos.map(u=>u.precio));
+  const propios=sum(S.gastos.map(x=>tot(x)-part(x))),sv=sum(S.usos.map(u=>u.precio))+sum(S.gastos.map(part));
   const porC={};S.gastos.forEach(x=>{const k=x.concepto||('n:'+x.nombre);(porC[k]=porC[k]||{n:x.nombre,ic:S.conceptos.find(z=>z.id===x.concepto)?.icon||77,q:0,t:0});porC[k].q+=x.cantidad;porC[k].t+=tot(x)});
   const L=Object.values(porC).sort((a,b)=>b.t-a.t),mx=Math.max(1,...L.map(x=>x.t));
   return`<div class="seg"><button class="${UI.gview==='registro'?'on':''}" data-a="gview" data-v="registro">Gastos</button><button class="${UI.gview==='catalogo'?'on':''}" data-a="gview" data-v="catalogo">Catálogo de conceptos</button></div>
@@ -287,7 +302,7 @@ function vGastos(){
   <div class="grid"><div class="stat" style="cursor:default"><span>Gastos propios</span><b class="money">${eur(propios)}</b></div><div class="stat" style="cursor:default"><span>Pagado con subvención</span><b class="money">${eur(sv)}</b></div></div>
   <div class="sec">Por concepto</div>${L.length?`<div class="card">${L.map(x=>`<div class="hbar" style="grid-template-columns:30px 1fr auto"><img class="ic s" src="${A.icons[x.ic]}" alt=""><div><div class="lbl"><span>${esc(x.n)}</span><span style="color:var(--muted)">× ${x.q}</span></div><div class="bar"><i style="width:${x.t/mx*100}%;background:var(--acc)"></i></div></div><b class="money">${eur(x.t)}</b></div>`).join('')}</div>`:`<div class="card empty">${ic(77,'m')}<div>Aún no hay gastos.</div></div>`}
   <div class="sec">Registro <small>${S.gastos.length}</small></div>
-  ${[...S.gastos].reverse().map(x=>`<button class="item" data-a="editGasto" data-id="${x.id}">${ic(S.conceptos.find(z=>z.id===x.concepto)?.icon||77,'s')}<div class="grow"><b>${esc(x.nombre)}</b><small>${x.cantidad} × ${eur(x.precio)} · ${fdate(x.fecha)}${x.gato?' · '+esc(gato(x.gato)?.nombre||''):(x.colonia?' · '+esc(colNombre(x.colonia)):'')}</small></div><b class="money">${eur(tot(x))}</b></button>`).join('')}
+  ${[...S.gastos].reverse().map(x=>`<button class="item" data-a="editGasto" data-id="${x.id}">${ic(S.conceptos.find(z=>z.id===x.concepto)?.icon||77,'s')}<div class="grow"><b>${esc(x.nombre)}</b><small>${x.cantidad} × ${eur(x.precio)} · ${fdate(x.fecha)}${x.gato?' · '+esc(gato(x.gato)?.nombre||''):(x.colonia?' · '+esc(colNombre(x.colonia)):'')}</small><div style="margin-top:3px">${pagoPill(x)}</div></div><b class="money">${eur(tot(x))}</b></button>`).join('')}
   <button class="btn fab" data-a="newGasto" aria-label="Registrar gasto">＋</button>`}`;
 }
 /* ---------- SUBVENCIONES ---------- */
@@ -295,19 +310,45 @@ function vSubv(){
   if(!S.subv.length)return`<div class="card empty">${ic(1,'l')}<div style="margin:8px 0 14px">Registra aquí cada subvención concedida, su importe y los servicios que cubre (Esterilización macho, hembra, Dormir…).<br>Después, desde la ficha de cada gato, ve restando el saldo.</div><button class="btn" data-a="newSubv">＋ Nueva subvención</button></div>`;
   return S.subv.map(s=>{const st=subvStats(s);return`<button class="item" style="display:block" data-a="subv" data-id="${s.id}"><div class="row">${ic(s.icon,'m')}<div class="grow"><b style="white-space:normal">${esc(s.nombre)}</b><small>Concedida: ${fdate(s.fecha)}</small></div><div class="right"><small>Queda</small><br><b class="money ${st.queda<0?'bad':'okc'}">${eur(st.queda)}</b></div></div><div class="bar lg" style="margin-top:10px"><i style="width:${st.pct}%;background:${st.queda<0?'var(--bad)':'var(--acc)'}"></i></div><div class="row" style="justify-content:space-between;margin-top:4px;font-size:13px;font-weight:700;color:var(--muted)"><span>Inicial ${eur(s.importe)}</span><span>Gastado ${eur(st.gastado)}</span></div></button>`}).join('')+`<button class="btn fab" data-a="newSubv" aria-label="Nueva subvención">＋</button>`;
 }
+function lineasSubv(s){
+  const L=[];
+  S.usos.filter(u=>u.subv===s.id).forEach(u=>L.push({k:u.serv,tipo:'uso',nombre:u.nombre,fecha:u.fecha,importe:u.precio,gato:u.gato}));
+  S.gastos.forEach(x=>{const p=part(x);if(p>0&&x.subv===s.id)L.push({k:'g:'+(x.concepto||x.nombre),tipo:'gasto',nombre:x.nombre,fecha:x.fecha,importe:p,gato:x.gato,colonia:x.colonia,id:x.id,icon:S.conceptos.find(z=>z.id===x.concepto)?.icon||77})});
+  return L;
+}
 function openSubv(id){
   const c=openSheet(ctl=>{const s=subv(id);if(!s){setTimeout(()=>ctl.close());return''}const st=subvStats(s);const off=ctl.off=ctl.off||new Set();
-    const por=s.servicios.map(x=>{const u=st.u.filter(k=>k.serv===x.id);return{x,n:u.length,t:sum(u.map(k=>k.precio))}});const mx=Math.max(1,...por.map(p=>p.t));
-    const selU=st.u.filter(u=>!off.has(u.serv)),selT=sum(selU.map(u=>u.precio)),nSel=s.servicios.filter(x=>!off.has(x.id)).length,todos=off.size===0;
+    const L=lineasSubv(s);
+    const por=s.servicios.map(x=>{const u=L.filter(k=>k.tipo==='uso'&&k.k===x.id);return{key:x.id,nombre:x.nombre,sub:`${u.length} × ${eur(x.precio)}`,t:sum(u.map(k=>k.importe)),icon:s.icon}});
+    const gk={};L.filter(l=>l.tipo==='gasto').forEach(l=>{(gk[l.k]=gk[l.k]||{key:l.k,nombre:l.nombre,n:0,t:0,icon:l.icon});gk[l.k].n++;gk[l.k].t+=l.importe});
+    Object.values(gk).forEach(g=>por.push({key:g.key,nombre:g.nombre,sub:pl(g.n,'gasto registrado','gastos registrados'),t:g.t,icon:g.icon}));
+    ctl.keys=por.map(p=>p.key);
+    const mx=Math.max(1,...por.map(p=>p.t));
+    const selL=L.filter(l=>!off.has(l.k)),selT=sum(selL.map(l=>l.importe)),nSel=por.filter(p=>!off.has(p.key)).length,todos=off.size===0;
+    const regs=[...S.gastos].filter(x=>tot(x)>0).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
     return`${head(esc(s.nombre))}
     <div class="card"><div class="grid g3" style="gap:6px;text-align:center"><div><small style="color:var(--muted);font-weight:700">Inicial</small><br><b class="money">${eur(s.importe)}</b></div><div><small style="color:var(--muted);font-weight:700">Gastado</small><br><b class="money">${eur(st.gastado)}</b></div><div><small style="color:var(--muted);font-weight:700">Queda</small><br><b class="money ${st.queda<0?'bad':'okc'}">${eur(st.queda)}</b></div></div><div class="bar lg" style="margin-top:12px"><i style="width:${st.pct}%;background:${st.queda<0?'var(--bad)':'var(--acc)'}"></i></div>${st.queda<0?'<div class="warn">Se ha superado el importe concedido.</div>':''}</div>
-    <div class="sec">¿En qué se ha gastado? <small><button type="button" class="link" data-a="svcAll" data-v="${todos?'0':'1'}">${todos?'Quitar todos':'Marcar todos'}</button></small></div><div class="card"><p style="margin:0 0 4px;color:var(--muted);font-weight:600;font-size:13px">Marca los servicios que quieras sumar.</p>${por.map(p=>`<div class="hbar" style="grid-template-columns:26px 1fr auto"><input type="checkbox" data-a="svcSel" data-id="${p.x.id}" ${off.has(p.x.id)?'':'checked'} aria-label="Incluir ${esc(p.x.nombre)}" style="width:24px;height:24px;accent-color:var(--acc)"><div><div class="lbl"><span>${esc(p.x.nombre)}</span></div><div class="bar"><i style="width:${p.t/mx*100}%;background:var(--acc)"></i></div><small style="color:var(--muted);font-weight:700">${p.n} × ${eur(p.x.precio)}</small></div><b class="money">${eur(p.t)}</b></div>`).join('')||'<div class="empty">Sin servicios.</div>'}
-    <div class="kv" style="margin-top:8px;border-top:2px solid var(--line);border-bottom:0;padding-top:12px"><span><b>Total seleccionado</b><br><small style="color:var(--muted);font-weight:700">${nSel} de ${s.servicios.length} servicios · ${selU.length} aplicaciones</small></span><b class="money" style="font-size:22px">${eur(selT)}</b></div></div>
-    <div class="sec">Gatos atendidos <small>${selU.length}${selU.length!==st.u.length?' de '+st.u.length:''}</small></div>
-    ${selU.length?[...selU].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')).map(u=>{const g=gato(u.gato);return`<button class="item" data-a="gato" data-id="${u.gato}">${ic(g?.icon||20,'s')}<div class="grow"><b>${esc(g?.nombre||'(gato eliminado)')}</b><small>${esc(u.nombre)} · ${fdate(u.fecha)}</small></div><b class="money">${eur(u.precio)}</b></button>`}).join(''):(st.u.length?'<div class="empty">Ningún gato con los servicios marcados.</div>':'<div class="empty">Todavía no se ha aplicado a ningún gato.</div>')}
+    <div class="sec">¿En qué se ha gastado? <small><button type="button" class="link" data-a="svcAll" data-v="${todos?'0':'1'}">${todos?'Quitar todos':'Marcar todos'}</button></small></div><div class="card"><p style="margin:0 0 4px;color:var(--muted);font-weight:600;font-size:13px">Marca los conceptos que quieras sumar.</p>${por.map(p=>`<div class="hbar" style="grid-template-columns:26px 1fr auto"><input type="checkbox" data-a="svcSel" data-id="${esc(p.key)}" ${off.has(p.key)?'':'checked'} aria-label="Incluir ${esc(p.nombre)}" style="width:24px;height:24px;accent-color:var(--acc)"><div><div class="lbl"><span>${esc(p.nombre)}</span></div><div class="bar"><i style="width:${p.t/mx*100}%;background:var(--acc)"></i></div><small style="color:var(--muted);font-weight:700">${esc(p.sub)}</small></div><b class="money">${eur(p.t)}</b></div>`).join('')||'<div class="empty">Sin servicios.</div>'}
+    <div class="kv" style="margin-top:8px;border-top:2px solid var(--line);border-bottom:0;padding-top:12px"><span><b>Total seleccionado</b><br><small style="color:var(--muted);font-weight:700">${nSel} de ${por.length} conceptos · ${selL.length} aplicaciones</small></span><b class="money" style="font-size:22px">${eur(selT)}</b></div></div>
+    <div class="sec">Detalle <small>${selL.length}${selL.length!==L.length?' de '+L.length:''}</small></div>
+    ${selL.length?[...selL].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')).map(l=>{if(l.tipo==='uso'){const g=gato(l.gato);return`<button class="item" data-a="gato" data-id="${l.gato}">${ic(g?.icon||20,'s')}<div class="grow"><b>${esc(g?.nombre||'(gato eliminado)')}</b><small>${esc(l.nombre)} · ${fdate(l.fecha)}</small></div><b class="money">${eur(l.importe)}</b></button>`}
+      const g=gato(l.gato);return`<button class="item" data-a="editGasto" data-id="${l.id}">${ic(l.icon,'s')}<div class="grow"><b>${esc(l.nombre)}</b><small>${fdate(l.fecha)} · ${g?esc(g.nombre):(l.colonia?esc(colNombre(l.colonia)):'Gasto general')}</small></div><b class="money">${eur(l.importe)}</b></button>`}).join(''):(L.length?'<div class="empty">Nada con los conceptos marcados.</div>':'<div class="empty">Todavía no se ha aplicado nada a esta subvención.</div>')}
+    <div class="sec">Gastos ya registrados <small>${regs.length}</small></div>
+    <p style="margin:0 4px 8px;color:var(--muted);font-weight:600;font-size:13px">Toca un gasto para indicar cuánto de su importe paga esta subvención.</p>
+    ${regs.length?regs.map(x=>{const p=part(x),mine=x.subv===s.id&&p>0,other=x.subv&&x.subv!==s.id&&p>0;return`<button class="item" data-a="gastoSubv" data-id="${x.id}" data-sid="${s.id}">${ic(S.conceptos.find(z=>z.id===x.concepto)?.icon||77,'s')}<div class="grow"><b>${esc(x.nombre)}</b><small>${fdate(x.fecha)} · total ${eur(tot(x))}</small><div style="margin-top:3px">${mine?`<span class="pill ok">🏛 Esta subvención: ${eur(p)}</span>`:other?`<span class="pill no">🏛 Otra subvención: ${eur(p)}</span>`:'<span class="pill">👛 Personal</span>'}</div></div><span style="color:var(--muted)">›</span></button>`}).join(''):'<div class="empty">Aún no hay gastos registrados.</div>'}
     <button class="btn ghost block" style="margin-top:6px" data-a="bulk" data-id="${id}">⚡ Asignar esterilizaciones ya hechas</button>
     <div class="two" style="margin-top:8px"><button class="btn ghost" data-a="editSubv" data-id="${id}">Editar</button><button class="btn danger" data-a="delSubv" data-id="${id}">Eliminar</button></div>`;
   });c.render();
+}
+function openGastoSubv(gid,sid){
+  const x=S.gastos.find(k=>k.id===gid),s=subv(sid);if(!x||!s)return;const total=tot(x);const cur=x.subv===sid?part(x):0;
+  const c=openSheet(()=>`${head('Parte de la subvención')}<form data-f="gastoSubv" data-id="${gid}" data-sid="${sid}">
+  <div class="card"><div class="kv"><span>Gasto</span><b>${esc(x.nombre)}</b></div><div class="kv"><span>Importe total</span><b class="money">${eur(total)}</b></div><div class="kv"><span>Subvención</span><b>${esc(s.nombre)}</b></div></div>
+  ${x.subv&&x.subv!==sid&&part(x)>0?`<div class="warn">Este gasto estaba asignado a otra subvención (${eur(part(x))}). Si lo guardas aquí, pasará a esta.</div>`:''}
+  <label class="f">Importe que paga esta subvención (€)</label><div class="row"><input class="in" name="importe" inputmode="decimal" value="${dec(cur)}"><button type="button" class="btn ghost sm" data-a="gsTodo">Todo</button><button type="button" class="btn ghost sm" data-a="gsNada">Nada</button></div>
+  <div id="gpv" class="card" style="margin-top:10px;font-weight:700;font-size:14px"></div>
+  <button class="btn block" style="margin-top:14px">Guardar</button></form>`,{live:false});
+  c.mount=sh=>gsPreview($('form',sh));c.render();
 }
 function svcRow(x={}){const id=x.id||uid();return`<div data-row="${id}"><div class="svc"><input class="in" data-k="nombre" placeholder="Servicio" value="${esc(x.nombre||'')}"><input class="in" data-k="precio" inputmode="decimal" placeholder="€" value="${dec(x.precio??'')}"><button type="button" class="x" data-a="rmRow" ${x.used?'disabled style="opacity:.3" title="Ya está en uso"':''}>✕</button></div><div class="svc2"><select class="in" data-k="sexo"><option ${x.sexo==='Ambos'||!x.sexo?'selected':''}>Ambos</option><option ${x.sexo==='Macho'?'selected':''}>Macho</option><option ${x.sexo==='Hembra'?'selected':''}>Hembra</option></select><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" data-k="esteriliza" ${x.esteriliza?'checked':''}> marca al gato como esterilizado</label></div></div>`}
 function openSubvForm(id){
@@ -419,16 +460,20 @@ const ACT={
   delUso(d){S.usos=S.usos.filter(u=>u.id!==d.id);changed();toast('Servicio quitado: saldo devuelto a la subvención')},
   addGasto(d){openGasto({gato:d.gato})},newGasto(){openGasto()},editGasto(d){openGasto({id:d.id})},
   delGasto(d,t){if(t.closest('form')&&!confirmTwice(t,'Pulsa de nuevo para eliminar.'))return;S.gastos=S.gastos.filter(x=>x.id!==d.id);const w=t.closest('.sheet-wrap');if(t.closest('form'))w._ctl.close();changed();toast('Gasto eliminado')},
-  gConc(d,t){const k=S.conceptos.find(z=>z.id===t.value);const f=t.form;$('#otro',f).style.display=t.value?'none':'block';if(k)f.precio.value=dec(k.precio)},
+  gConc(d,t){const k=S.conceptos.find(z=>z.id===t.value);const f=t.form;$('#otro',f).style.display=t.value?'none':'block';if(k){f.precio.value=dec(k.precio);if(S.subv.length)f.pago.value=k.pago==='subv'?'subv':'personal';f.importeSubv.dataset.auto='1'}gastoPreview(f)},
+  subvTodo(d,t){const f=t.closest('form');f.importeSubv.dataset.auto='1';gastoPreview(f)},
+  gastoSubv(d){openGastoSubv(d.id,d.sid)},
+  gsTodo(d,t){const f=t.closest('form');f.importe.value=dec(r2(tot(S.gastos.find(x=>x.id===f.dataset.id))));gsPreview(f)},
+  gsNada(d,t){const f=t.closest('form');f.importe.value='0';gsPreview(f)},
   newConcepto(){openConcepto()},concepto(d){openConcepto(d.id)},
   delConcepto(d,t){if(!confirmTwice(t,'Los gastos ya registrados se conservan. Pulsa de nuevo para eliminar.'))return;S.conceptos=S.conceptos.filter(k=>k.id!==d.id);t.closest('.sheet-wrap')._ctl.close();changed()},
   newSubv(){openSubvForm()},subv(d){openSubv(d.id)},editSubv(d){openSubvForm(d.id)},
-  delSubv(d,t){if(!confirmTwice(t,'Se borrará la subvención y los servicios aplicados. Pulsa de nuevo.'))return;S.usos=S.usos.filter(u=>u.subv!==d.id);S.subv=S.subv.filter(s=>s.id!==d.id);t.closest('.sheet-wrap')._ctl.close();changed()},
+  delSubv(d,t){if(!confirmTwice(t,'Se borrará la subvención y los servicios aplicados. Pulsa de nuevo.'))return;S.usos=S.usos.filter(u=>u.subv!==d.id);S.gastos.forEach(x=>{if(x.subv===d.id){x.subv='';x.importeSubv=0}});S.subv=S.subv.filter(s=>s.id!==d.id);t.closest('.sheet-wrap')._ctl.close();changed()},
   addRow(d,t){const f=t.closest('form');$('#rows',f).insertAdjacentHTML('beforeend',svcRow())},
   rmRow(d,t){if(t.disabled)return;t.closest('[data-row]').remove()},
   sugSvc(d,t){const w=t.closest('.sheet-wrap')._ctl;const x=w.sug[+d.i];$('#rows',w.el).insertAdjacentHTML('beforeend',svcRow({nombre:x[0],precio:x[1],sexo:x[2],esteriliza:!!x[3]}))},
   svcSel(d,t){const w=t.closest('.sheet-wrap')._ctl;t.checked?w.off.delete(d.id):w.off.add(d.id);w.render()},
-  svcAll(d,t){const w=t.closest('.sheet-wrap')._ctl;const s=subv(w.el.querySelector('[data-a=bulk]').dataset.id);w.off=d.v==='1'?new Set():new Set(s.servicios.map(x=>x.id));w.render()},
+  svcAll(d,t){const w=t.closest('.sheet-wrap')._ctl;w.off=d.v==='1'?new Set():new Set(w.keys);w.render()},
   bulk(d){openBulk(d.id)},
   bulkSvc(d,t){const w=t.closest('.sheet-wrap')._ctl;w.svc=t.value;w.init=0;w.sel=new Set();w.render()},
   bulkSel(d,t){const w=t.closest('.sheet-wrap')._ctl;t.checked?w.sel.add(d.id):w.sel.delete(d.id);w.render()},
@@ -453,15 +498,31 @@ document.addEventListener('change',e=>{const t=e.target;
     if(t.name==='colonia'&&t.value==='__new'){t.value=S.colonias[0]?.id||'';openCol(null,id=>{refreshColSelect(form,id)});return}
     if(t.name==='esterilizado'){$('#fe',form).style.display=t.checked?'block':'none'}
     if(form.dataset.f==='gatoEdit')gatoAuto(form)}
+  if(form.dataset.f==='gasto')gastoPreview(form);
 });
 function refreshColSelect(f,id){const s=f.colonia;s.innerHTML=colOptions(id);s.value=id;if(f.dataset.f==='gatoEdit')gatoAuto(f)}
-document.addEventListener('input',e=>{if(e.target.id==='q'){UI.q=e.target.value;$('#lista').innerHTML=listaGatos()}});
+document.addEventListener('input',e=>{if(e.target.id==='q'){UI.q=e.target.value;$('#lista').innerHTML=listaGatos();return}
+  const f=e.target.closest('form');if(!f)return;
+  if(f.dataset.f==='gasto'){if(e.target.name==='importeSubv')e.target.dataset.auto='0';gastoPreview(f)}
+  if(f.dataset.f==='gastoSubv')gsPreview(f)});
+function gastoPreview(f){
+  const pv=$('#pv',f),box=$('#subvbox',f),on=f.pago.value==='subv'&&S.subv.length;box.style.display=on?'block':'none';
+  const total=r2(num(f.cantidad.value)*num(f.precio.value));
+  if(!on){pv.style.display='none';return}
+  const im=f.importeSubv;if(im.dataset.auto==='1')im.value=dec(total);
+  const p=r2(Math.min(num(im.value),total));const s=subv(f.subv.value);if(!s){pv.style.display='none';return}
+  const own=f.dataset.id?(x=>x&&x.subv===s.id?part(x):0)(S.gastos.find(k=>k.id===f.dataset.id)):0;
+  const queda=r2(subvStats(s).queda+own-p);
+  pv.style.display='block';pv.innerHTML=`Total ${eur(total)} → 🏛 Subvención <b>${eur(p)}</b> · 👛 Personal <b>${eur(total-p)}</b><br><span class="${queda<0?'bad':''}">Quedaría en la subvención: ${eur(queda)}${queda<0?' ⚠ se supera el importe':''}</span>`;
+}
+function gsPreview(f){const x=S.gastos.find(k=>k.id===f.dataset.id),s=subv(f.dataset.sid);const total=tot(x);const p=r2(Math.min(num(f.importe.value),total));const own=x.subv===s.id?part(x):0;const queda=r2(subvStats(s).queda+own-p);$('#gpv',f).innerHTML=`Subvención <b>${eur(p)}</b> · Personal <b>${eur(total-p)}</b><br><span class="${queda<0?'bad':''}">Quedaría en la subvención: ${eur(queda)}${queda<0?' ⚠ se supera el importe':''}</span>`}
 function gatoAuto(f){const g=gato(f.dataset.id);if(!g)return;const d=new FormData(f);g.nombre=(d.get('nombre')||'').trim()||g.nombre;g.sexo=d.get('sexo');g.colonia=d.get('colonia');g.fecha=d.get('fecha')||'';g.origen=d.get('origen');g.esterilizado=!!d.get('esterilizado');g.fechaEst=d.get('fechaEst')||'';g.notas=d.get('notas')||'';g.icon=+d.get('icon');save();render();sheetsArr.forEach(s=>{if(s.el.contains(f)){const h=$('.sh-head h2',s.el);if(h)h.textContent=g.nombre}})}
 document.addEventListener('submit',e=>{const f=e.target;if(!f.dataset.f)return;e.preventDefault();const d=new FormData(f);const w=f.closest('.sheet-wrap')?._ctl;
   switch(f.dataset.f){
   case'gatoNuevo':{const g={id:uid(),num:S.gatos.length+1,nombre:d.get('nombre').trim(),sexo:d.get('sexo'),colonia:d.get('colonia'),fecha:d.get('fecha')||'',origen:d.get('origen'),esterilizado:!!d.get('esterilizado'),fechaEst:d.get('fechaEst')||'',notas:d.get('notas')||'',icon:+d.get('icon')};S.gatos.push(g);w.close();changed();toast('Gato añadido 🐾');openGato(g.id,'serv');break}
-  case'gasto':{const k=S.conceptos.find(z=>z.id===d.get('concepto'));const nombre=k?k.nombre:(d.get('nombre')||'').trim()||'Gasto';const o={concepto:k?k.id:'',nombre,cantidad:num(d.get('cantidad'))||1,precio:num(d.get('precio')),fecha:d.get('fecha')||'',gato:d.get('gato'),colonia:d.get('gato')?'':d.get('colonia'),nota:d.get('nota')||''};if(f.dataset.id)Object.assign(S.gastos.find(x=>x.id===f.dataset.id),o);else S.gastos.push({id:uid(),...o});w.close();changed();toast('Gasto guardado');break}
-  case'concepto':{const o={nombre:d.get('nombre').trim(),precio:num(d.get('precio')),tipo:d.get('tipo'),icon:+d.get('icon')};if(f.dataset.id)Object.assign(S.conceptos.find(x=>x.id===f.dataset.id),o);else S.conceptos.push({id:uid(),...o});w.close();changed();break}
+  case'gastoSubv':{const x=S.gastos.find(k=>k.id===f.dataset.id);const im=r2(Math.min(num(d.get('importe')),tot(x)));if(im>0){x.subv=f.dataset.sid;x.importeSubv=im}else{x.subv='';x.importeSubv=0}w.close();changed();toast(im>0?'Asignado a la subvención ✓':'Quitado: lo paga el aporte personal');break}
+  case'gasto':{const k=S.conceptos.find(z=>z.id===d.get('concepto'));const nombre=k?k.nombre:(d.get('nombre')||'').trim()||'Gasto';const o={concepto:k?k.id:'',nombre,cantidad:num(d.get('cantidad'))||1,precio:num(d.get('precio')),fecha:d.get('fecha')||'',gato:d.get('gato'),colonia:d.get('gato')?'':d.get('colonia'),nota:d.get('nota')||'',subv:'',importeSubv:0};const total=o.cantidad*o.precio;if(d.get('pago')==='subv'&&S.subv.length){const im=r2(Math.min(num(d.get('importeSubv')),total));if(im>0){o.subv=d.get('subv');o.importeSubv=im}}if(f.dataset.id)Object.assign(S.gastos.find(x=>x.id===f.dataset.id),o);else S.gastos.push({id:uid(),...o});w.close();changed();toast('Gasto guardado');break}
+  case'concepto':{const o={nombre:d.get('nombre').trim(),precio:num(d.get('precio')),tipo:d.get('tipo'),icon:+d.get('icon'),pago:d.get('pago')||'personal'};if(f.dataset.id)Object.assign(S.conceptos.find(x=>x.id===f.dataset.id),o);else S.conceptos.push({id:uid(),...o});w.close();changed();break}
   case'subv':{const rows=[...f.querySelectorAll('[data-row]')].map(r=>({id:r.dataset.row,nombre:$('[data-k=nombre]',r).value.trim(),precio:num($('[data-k=precio]',r).value),sexo:$('[data-k=sexo]',r).value,esteriliza:$('[data-k=esteriliza]',r).checked})).filter(r=>r.nombre);
     if(!rows.length){toast('Añade al menos un servicio');return}
     const o={nombre:d.get('nombre').trim(),importe:num(d.get('importe')),fecha:d.get('fecha')||'',icon:+d.get('icon'),servicios:rows};
