@@ -446,7 +446,7 @@ function openAjustes(){
   <label class="f">Imagen de portada (Inicio)</label><div class="bn">${['h1','h2','h3','h4','h5','h6'].map(k=>`<button class="${st.banner===k?'on':''}" data-a="banner" data-v="${k}"><img src="${A.wid[k]}" alt=""></button>`).join('')}</div>
   <label class="f">Fondo de pantalla</label><label class="sw" style="margin:0 0 8px"><input type="checkbox" data-a="wallOn" ${st.wallOn?'checked':''}> Mostrar fondo</label><div class="wp">${Array.from({length:14},(_, i)=>i+1).map(i=>`<button class="${st.wall==i?'on':''}" data-a="wall" data-v="${i}"><img src="${A.wall[i]}" alt=""></button>`).join('')}</div>
   <label class="f">Instalar en el móvil</label><div class="card" style="font-size:14px;font-weight:600"><b>iPhone (Safari):</b> Compartir → “Añadir a pantalla de inicio”.<br><b>Android (Chrome):</b> menú ⋮ → “Instalar aplicación” o “Añadir a pantalla de inicio”.</div>
-  <label class="f">Copia de seguridad</label><div class="two"><button class="btn ghost" data-a="export">Exportar datos</button><button class="btn ghost" data-a="import">Importar datos</button></div>
+  <label class="f">Copia de seguridad</label><button class="btn block" style="margin-bottom:8px" data-a="excel">📊 Exportar a Excel (informe completo)</button><div class="two"><button class="btn ghost" data-a="export">Exportar datos</button><button class="btn ghost" data-a="import">Importar datos</button></div>
   <p style="color:var(--muted);font-size:13px;font-weight:600">📷 ${Object.keys(FOTOS).length} foto${Object.keys(FOTOS).length===1?'':'s'} guardada${Object.keys(FOTOS).length===1?'':'s'} en este móvil (${(sum(Object.values(FSIZE))/1048576).toFixed(1).replace('.',',')} MB). Se reducen automáticamente al elegirlas.<br>Los datos se guardan en este dispositivo. Para pasarlos a otro móvil usa Exportar e Importar.</p>
   <button class="btn danger block" data-a="reset">Borrar todos los datos</button>`},{live:true});
   c.mount=s=>{const i=$('#appname',s);i&&i.addEventListener('change',()=>{S.settings.nombre=i.value.trim()||'Mis Gatitos';save();render()})};c.render();
@@ -458,6 +458,117 @@ function openExport(){
 function openImport(){
   const c=openSheet(()=>`${head('Importar datos')}<p style="margin:0 0 8px;font-weight:600">Pega aquí la copia exportada o elige el archivo. <b>Reemplazará</b> los datos actuales.</p><textarea class="in" id="imp" placeholder="Pega el texto exportado…"></textarea><input type="file" id="impf" accept=".json,application/json" style="margin:10px 0"><button class="btn block" data-a="doImport">Importar</button>`,{live:false});c.render();
   $('#impf',c.el).addEventListener('change',e=>{const f=e.target.files[0];if(f){const r=new FileReader();r.onload=()=>{c.fileText=r.result;const im=$('#imp',c.el);im.value='';im.placeholder='Archivo cargado: '+f.name};r.readAsText(f)}});
+}
+/* ---------- exportar a Excel ---------- */
+function loadScript(src){return new Promise((ok,ko)=>{const e=document.createElement('script');e.src=src;e.onload=ok;e.onerror=ko;document.head.appendChild(e)})}
+async function needExcel(){if(window.ExcelJS)return;try{await loadScript('exceljs.min.js')}catch(e){await loadScript('https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js')}if(!window.ExcelJS)throw new Error('ExcelJS')}
+const hexMix=(h,t,to='FFFFFF')=>{const a=[0,2,4].map(i=>parseInt(h.slice(i,i+2),16)),b=[0,2,4].map(i=>parseInt(to.slice(i,i+2),16));return a.map((v,i)=>Math.round(v+(b[i]-v)*t).toString(16).padStart(2,'0')).join('').toUpperCase()};
+const toDate=f=>f?new Date(f+'T00:00:00Z'):null;
+async function buildExcel(){
+  await needExcel();
+  const ACC=(ACCENTS[S.settings.accent]||ACCENTS.rosa).slice(1).toUpperCase();
+  const DARK=hexMix(ACC,.45,'3A2020'),SOFT=hexMix(ACC,.9),SOFT2=hexMix(ACC,.78),LINE=hexMix(ACC,.65);
+  const MON='#,##0.00" €";[Red]-#,##0.00" €"',DT='dd/mm/yyyy',PCT='0%';
+  const fill=c=>({type:'pattern',pattern:'solid',fgColor:{argb:'FF'+c}});
+  const thin={style:'thin',color:{argb:'FF'+LINE}};const box={top:thin,left:thin,bottom:thin,right:thin};
+  const wb=new ExcelJS.Workbook();wb.creator=S.settings.nombre;wb.created=new Date();wb.title='Copia de seguridad · '+S.settings.nombre;
+  const col_=n=>{let r='';while(n>0){const m=(n-1)%26;r=String.fromCharCode(65+m)+r;n=Math.floor((n-1)/26)}return r};
+  const ws=wb.addWorksheet('Resumen',{properties:{tabColor:{argb:'FF'+DARK}},views:[{showGridLines:false}]});
+  const E=n=>Math.max(5,4+n);
+  const stamp=new Date().toLocaleString('es-ES',{dateStyle:'long',timeStyle:'short'});
+  /* tabla genérica con título, cabecera coloreada, filas cebradas y totales */
+  function table(name,tab,title,cols,rows,o={}){
+    const ws=wb.addWorksheet(name,{properties:{tabColor:{argb:'FF'+tab}},views:[{state:'frozen',ySplit:4,showGridLines:false}]});
+    const n=cols.length;ws.columns=cols.map(c=>({width:c.w||14}));
+    ws.mergeCells(1,1,1,n);const t=ws.getCell(1,1);t.value=title;t.font={name:'Calibri',size:18,bold:true,color:{argb:'FFFFFFFF'}};t.fill=fill(DARK);t.alignment={vertical:'middle',indent:1};ws.getRow(1).height=36;
+    ws.mergeCells(2,1,2,n);const u=ws.getCell(2,1);u.value=(o.sub?o.sub+' · ':'')+S.settings.nombre+' · Generado el '+stamp;u.font={italic:true,size:10,color:{argb:'FF7A6465'}};u.alignment={indent:1};
+    const h=ws.getRow(4);h.height=cols.some(c=>c.h.length>16)?40:26;cols.forEach((c,i)=>{const x=h.getCell(i+1);x.value=c.h;x.font={bold:true,color:{argb:'FFFFFFFF'},size:11};x.fill=fill(ACC);x.alignment={horizontal:c.al||'center',vertical:'middle',wrapText:true};x.border=box});
+    rows.forEach((r,ri)=>{const row=ws.getRow(5+ri);row.height=20;cols.forEach((c,i)=>{const x=row.getCell(i+1);const v=r[i];x.value=v===undefined||v===''?null:v;x.font={size:11,color:{argb:'FF3E2B2B'}};x.border=box;x.fill=fill(ri%2?'FFFFFF':SOFT);x.alignment={vertical:'middle',horizontal:c.al||(c.fmt?'right':'left'),wrapText:!!c.wrap};if(c.fmt)x.numFmt=c.fmt})});
+    const last=4+rows.length;
+    if(o.totals&&rows.length){const tr=ws.getRow(last+1);tr.height=24;cols.forEach((c,i)=>{const x=tr.getCell(i+1);const tv=o.totals[i];x.fill=fill(SOFT2);x.font={bold:true,color:{argb:'FF'+DARK}};x.border={top:{style:'medium',color:{argb:'FF'+ACC}},bottom:thin,left:thin,right:thin};x.alignment={vertical:'middle',horizontal:c.al||(c.fmt?'right':'left')};if(tv!==undefined){x.value=tv;if(c.fmt)x.numFmt=c.fmt}})}
+    if(rows.length)ws.autoFilter={from:{row:4,column:1},to:{row:last,column:n}};
+    ws.pageSetup={orientation:o.land===false?'portrait':'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,printTitlesRow:'4:4',paperSize:9,margins:{left:.4,right:.4,top:.6,bottom:.6,header:.3,footer:.3}};
+    ws.headerFooter={oddFooter:'&L'+S.settings.nombre+'&CPágina &P de &N&R&D'};
+    return{ws,first:5,last};
+  }
+  const G=[...S.gatos].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  const gCoste=g=>sum(usosDe(g.id).map(u=>u.precio)),gGas=g=>sum(gastosDe(g.id).map(tot));
+  /* --- Gatos --- */
+  const T1=table('Gatos',ACC,'Registro de gatos',[{h:'Nº',w:6,al:'center'},{h:'Nombre',w:22},{h:'Sexo',w:11,al:'center'},{h:'Colonia',w:20},{h:'Fecha vista',w:13,fmt:DT,al:'center'},{h:'Origen',w:11,al:'center'},{h:'Esterilizado',w:13,al:'center'},{h:'Fecha esteril.',w:14,fmt:DT,al:'center'},{h:'Servicios subvencionados (€)',w:17,fmt:MON},{h:'Gastos asignados (€)',w:15,fmt:MON},{h:'Coste total (€)',w:14,fmt:MON},{h:'Notas',w:42,wrap:true}],
+    G.map((g,i)=>{const r=5+i;return[i+1,g.nombre,g.sexo,colNombre(g.colonia),toDate(g.fecha),g.origen==='cria'?'Cría':'Adulto',g.esterilizado?'Sí':'No',toDate(g.fechaEst),gCoste(g),gGas(g),{formula:`I${r}+J${r}`,result:gCoste(g)+gGas(g)},g.notas||'']}),
+    {sub:G.length+' gatos',totals:['','TOTAL','','','','','','',{formula:`SUBTOTAL(109,I5:I${E(G.length)})`,result:sum(G.map(gCoste))},{formula:`SUBTOTAL(109,J5:J${E(G.length)})`,result:sum(G.map(gGas))},{formula:`SUBTOTAL(109,K5:K${E(G.length)})`,result:sum(G.map(g=>gCoste(g)+gGas(g)))},'']});
+  G.forEach((g,i)=>{const r=5+i,w=T1.ws;const sx=w.getCell(r,3),es=w.getCell(r,7);
+    if(g.sexo==='Macho'){sx.fill=fill('DFEAFB');sx.font={bold:true,color:{argb:'FF3D6BB3'}}}else{sx.fill=fill('FDE0E8');sx.font={bold:true,color:{argb:'FFC0426A'}}}
+    if(g.esterilizado){es.fill=fill('DCF3E8');es.font={bold:true,color:{argb:'FF2C7D5A'}}}else{es.fill=fill('FDEACC');es.font={bold:true,color:{argb:'FF9B6410'}}}
+    if(g.origen==='cria'){const o=w.getCell(r,6);o.fill=fill('FFF1C9');o.font={bold:true,color:{argb:'FF8A5A00'}}}});
+  /* --- Colonias --- */
+  const C=S.colonias.map(c=>({c,t:colStats(c)}));
+  const T2=table('Colonias','8E6BD8','Colonias',[{h:'Colonia',w:24},{h:'Gatos',w:9,al:'center'},{h:'Machos',w:9,al:'center'},{h:'Hembras',w:9,al:'center'},{h:'Esterilizados',w:13,al:'center'},{h:'Pendientes',w:11,al:'center'},{h:'Hembras sin esterilizar',w:14,al:'center'},{h:'Crías registradas',w:12,al:'center'},{h:'% esterilizado',w:13,fmt:PCT,al:'center'},{h:'Notas / ubicación',w:44,wrap:true}],
+    C.map(({c,t},i)=>{const r=5+i;return[c.nombre,{formula:`COUNTIF(Gatos!$D$5:$D$${E(G.length)},A${r})`,result:t.total},{formula:`COUNTIFS(Gatos!$D$5:$D$${E(G.length)},A${r},Gatos!$C$5:$C$${E(G.length)},"Macho")`,result:t.m},{formula:`COUNTIFS(Gatos!$D$5:$D$${E(G.length)},A${r},Gatos!$C$5:$C$${E(G.length)},"Hembra")`,result:t.h},{formula:`COUNTIFS(Gatos!$D$5:$D$${E(G.length)},A${r},Gatos!$G$5:$G$${E(G.length)},"Sí")`,result:t.est},{formula:`B${r}-E${r}`,result:t.pend},{formula:`COUNTIFS(Gatos!$D$5:$D$${E(G.length)},A${r},Gatos!$C$5:$C$${E(G.length)},"Hembra",Gatos!$G$5:$G$${E(G.length)},"No")`,result:t.hPend},{formula:`COUNTIFS(Gatos!$D$5:$D$${E(G.length)},A${r},Gatos!$F$5:$F$${E(G.length)},"Cría")`,result:t.crias},{formula:`IF(B${r}=0,0,E${r}/B${r})`,result:t.total?t.est/t.total:0},c.notas||'']}),
+    {sub:C.length+' colonias',totals:['TOTAL',...['B','C','D','E','F','G','H'].map((L,i)=>({formula:`SUM(${L}5:${L}${E(C.length)})`,result:sum(C.map(x=>[x.t.total,x.t.m,x.t.h,x.t.est,x.t.pend,x.t.hPend,x.t.crias][i]))})),{formula:`IF(B${5+C.length}=0,0,E${5+C.length}/B${5+C.length})`,result:G.length?G.filter(g=>g.esterilizado).length/G.length:0},'']});
+  if(C.length){T2.ws.addConditionalFormatting({ref:`G5:G${E(C.length)}`,rules:[{type:'cellIs',operator:'greaterThan',formulae:[0],style:{fill:{type:'pattern',pattern:'solid',bgColor:{argb:'FFFDEACC'}},font:{bold:true,color:{argb:'FF9B6410'}}}}]});
+    T2.ws.addConditionalFormatting({ref:`I5:I${E(C.length)}`,rules:[{type:'dataBar',cfvo:[{type:'num',value:0},{type:'num',value:1}],color:{argb:'FF3FA37A'},gradient:false}]})}
+  /* --- Reproducción (últimos 12 meses) --- */
+  const now=new Date(),M=[];for(let i=11;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);M.push({k:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),l:MESES[d.getMonth()]+' '+String(d.getFullYear()).slice(2)})}
+  const crias=S.gatos.filter(g=>g.origen==='cria');
+  const T3=table('Reproducción','F2A03D','Actividad de reproducción · crías nacidas por mes',[{h:'Colonia',w:24},...M.map(m=>({h:m.l,w:8.5,al:'center'})),{h:'Sin fecha',w:10,al:'center'},{h:'Total crías',w:11,al:'center'}],
+    S.colonias.map((c,i)=>{const r=5+i;const mine=crias.filter(g=>g.colonia===c.id);const cnt=M.map(m=>mine.filter(g=>g.fecha&&g.fecha.slice(0,7)===m.k).length);const sf=mine.filter(g=>!g.fecha).length;const ult=sum(cnt);return[c.nombre,...cnt,sf,{formula:`SUM(B${r}:O${r})`,result:ult+sf}]}),
+    {sub:'Heatmap: más oscuro = más crías',totals:['TOTAL',...M.map((m,i)=>({formula:`SUM(${col_(2+i)}5:${col_(2+i)}${E(S.colonias.length)})`,result:crias.filter(g=>g.fecha&&g.fecha.slice(0,7)===m.k).length})),{formula:`SUM(N5:N${E(S.colonias.length)})`,result:crias.filter(g=>!g.fecha).length},{formula:`SUM(O5:O${E(S.colonias.length)})`,result:crias.length}]});
+  if(S.colonias.length)T3.ws.addConditionalFormatting({ref:`B5:M${E(S.colonias.length)}`,rules:[{type:'colorScale',cfvo:[{type:'num',value:0},{type:'max'}],color:[{argb:'FFFFFFFF'},{argb:'FFE8728F'}]}]});
+  /* --- Gastos --- */
+  const X=[...S.gastos].sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
+  const T4=table('Gastos','3FB6A8','Registro de gastos',[{h:'Fecha',w:13,fmt:DT,al:'center'},{h:'Concepto',w:30},{h:'Cantidad',w:10,al:'center'},{h:'Precio unidad (€)',w:14,fmt:MON},{h:'Total (€)',w:13,fmt:MON},{h:'Pagado por subvención (€)',w:16,fmt:MON},{h:'Aportación personal (€)',w:16,fmt:MON},{h:'Subvención',w:24},{h:'Gato',w:18},{h:'Colonia',w:18},{h:'Nota',w:40,wrap:true}],
+    X.map((x,i)=>{const r=5+i,p=part(x);return[toDate(x.fecha),x.nombre,x.cantidad,x.precio,{formula:`C${r}*D${r}`,result:tot(x)},p,{formula:`E${r}-F${r}`,result:tot(x)-p},p?(subv(x.subv)?.nombre||''):'',x.gato?(gato(x.gato)?.nombre||''):'',x.gato?colNombre(gato(x.gato)?.colonia):(x.colonia?colNombre(x.colonia):''),x.nota||'']}),
+    {sub:X.length+' gastos',totals:['','TOTAL','','',...['E','F','G'].map((L,i)=>({formula:`SUBTOTAL(109,${L}5:${L}${E(X.length)})`,result:sum(X.map(x=>[tot(x),part(x),tot(x)-part(x)][i]))})),'','','','']});
+  /* --- Subvenciones --- */
+  const SV=S.subv.map(s=>({s,st:subvStats(s)}));
+  const T5=table('Subvenciones','E8728F','Subvenciones',[{h:'Subvención',w:30},{h:'Fecha concesión',w:15,fmt:DT,al:'center'},{h:'Importe concedido (€)',w:17,fmt:MON},{h:'Gastado en servicios (€)',w:17,fmt:MON},{h:'Gastado en gastos (€)',w:16,fmt:MON},{h:'Gastado total (€)',w:15,fmt:MON},{h:'Queda (€)',w:14,fmt:MON},{h:'% usado',w:10,fmt:PCT,al:'center'}],
+    SV.map(({s,st},i)=>{const r=5+i;const gs=sum(st.u.map(u=>u.precio)),gg=sum(st.g.map(part));return[s.nombre,toDate(s.fecha),s.importe,gs,gg,{formula:`D${r}+E${r}`,result:gs+gg},{formula:`C${r}-F${r}`,result:s.importe-gs-gg},{formula:`IF(C${r}=0,0,F${r}/C${r})`,result:s.importe?(gs+gg)/s.importe:0}]}),
+    {sub:SV.length+' subvenciones',totals:['TOTAL','',...['C','D','E','F','G'].map((L,i)=>({formula:`SUM(${L}5:${L}${E(SV.length)})`,result:sum(SV.map(({s,st})=>{const gs=sum(st.u.map(u=>u.precio)),gg=sum(st.g.map(part));return[s.importe,gs,gg,gs+gg,s.importe-gs-gg][i]}))})),'']});
+  if(SV.length){T5.ws.addConditionalFormatting({ref:`H5:H${E(SV.length)}`,rules:[{type:'dataBar',cfvo:[{type:'num',value:0},{type:'num',value:1}],color:{argb:'FFE8728F'},gradient:false}]});T5.ws.addConditionalFormatting({ref:`G5:G${E(SV.length)}`,rules:[{type:'cellIs',operator:'lessThan',formulae:[0],style:{fill:{type:'pattern',pattern:'solid',bgColor:{argb:'FFFBDCDC'}}}}]})}
+  /* --- Servicios de cada subvención --- */
+  const SR=[];S.subv.forEach(s=>s.servicios.forEach(x=>{const u=S.usos.filter(k=>k.subv===s.id&&k.serv===x.id);SR.push([s.nombre,x.nombre,x.precio,x.sexo,x.esteriliza?'Sí':'No',u.length,sum(u.map(k=>k.precio))])}));
+  table('Servicios subvención','F08A5D','Servicios cubiertos por cada subvención',[{h:'Subvención',w:30},{h:'Servicio',w:28},{h:'Precio (€)',w:13,fmt:MON},{h:'Sexo',w:11,al:'center'},{h:'Marca esterilizado',w:15,al:'center'},{h:'Veces aplicado',w:13,al:'center'},{h:'Total (€)',w:14,fmt:MON}],SR,{sub:SR.length+' servicios',totals:['TOTAL','','','','',{formula:`SUM(F5:F${E(SR.length)})`,result:sum(SR.map(r=>r[5]))},{formula:`SUM(G5:G${E(SR.length)})`,result:sum(SR.map(r=>r[6]))}]});
+  /* --- Detalle: todo lo pagado con subvención --- */
+  const D=[];S.subv.forEach(s=>{lineasSubv(s).forEach(l=>{const g=gato(l.gato);D.push([s.nombre,l.tipo==='uso'?'Servicio a un gato':'Gasto',l.nombre,g?g.nombre:'',g?colNombre(g.colonia):(l.colonia?colNombre(l.colonia):''),toDate(l.fecha),l.importe])})});
+  D.sort((a,b)=>a[0].localeCompare(b[0],'es')||((b[5]||0)-(a[5]||0)));
+  table('Detalle subvención','9B7AE0','Detalle de lo pagado con subvención',[{h:'Subvención',w:28},{h:'Tipo',w:20},{h:'Concepto',w:30},{h:'Gato',w:20},{h:'Colonia',w:20},{h:'Fecha',w:13,fmt:DT,al:'center'},{h:'Importe subvención (€)',w:18,fmt:MON}],D,{sub:D.length+' líneas · usa los filtros para sumar por concepto',totals:['TOTAL','','','','','',{formula:`SUBTOTAL(109,G5:G${E(D.length)})`,result:sum(D.map(r=>r[6]))}]});
+  /* --- Catálogo --- */
+  table('Catálogo','4F8FE0','Catálogo de conceptos de gasto',[{h:'Concepto',w:34},{h:'Tipo',w:18},{h:'Precio habitual (€)',w:18,fmt:MON},{h:'Se paga normalmente con',w:24,al:'center'}],S.conceptos.map(k=>[k.nombre,k.tipo,k.precio,k.pago==='subv'?'Subvención':'Aportación personal']),{land:false});
+  /* --- Resumen (primera hoja) --- */
+  ws.columns=[{width:3},{width:38},{width:20},{width:3},{width:38},{width:20}];
+  ws.mergeCells('B1:F1');const t=ws.getCell('B1');t.value=S.settings.nombre;t.font={size:24,bold:true,color:{argb:'FFFFFFFF'}};t.fill=fill(DARK);t.alignment={vertical:'middle',indent:1};ws.getRow(1).height=48;
+  ws.mergeCells('B2:F2');const t2=ws.getCell('B2');t2.value='Copia de seguridad completa · generada el '+stamp;t2.font={italic:true,color:{argb:'FF7A6465'}};t2.alignment={indent:1};
+  const nG=G.length,rg=`Gatos!`;
+  const sec=(r,c,label)=>{ws.mergeCells(r,c,r,c+1);const x=ws.getCell(r,c);x.value=label;x.font={bold:true,size:13,color:{argb:'FFFFFFFF'}};x.fill=fill(ACC);x.alignment={vertical:'middle',indent:1};ws.getRow(r).height=24};
+  const kv=(r,c,label,val,fmt,color)=>{const a=ws.getCell(r,c),b=ws.getCell(r,c+1);a.value=label;a.font={size:11,color:{argb:'FF3E2B2B'}};a.fill=fill(SOFT);a.border=box;a.alignment={indent:1,vertical:'middle'};b.value=val;b.font={bold:true,size:13,color:{argb:'FF'+(color||DARK)}};b.fill=fill('FFFFFF');b.border=box;b.alignment={horizontal:'right',vertical:'middle'};if(fmt)b.numFmt=fmt;ws.getRow(r).height=22};
+  const nM=G.filter(g=>g.sexo==='Macho').length,nE=G.filter(g=>g.esterilizado).length;
+  sec(4,2,'Gatos');
+  kv(5,2,'Gatos registrados',{formula:`COUNTA(${rg}B5:B${E(nG)})`,result:nG});kv(6,2,'Machos',{formula:`COUNTIF(${rg}C5:C${E(nG)},"Macho")`,result:nM});kv(7,2,'Hembras',{formula:`COUNTIF(${rg}C5:C${E(nG)},"Hembra")`,result:nG-nM});
+  kv(8,2,'Esterilizados',{formula:`COUNTIF(${rg}G5:G${E(nG)},"Sí")`,result:nE},null,'2C7D5A');kv(9,2,'Pendientes de esterilizar',{formula:`COUNTIF(${rg}G5:G${E(nG)},"No")`,result:nG-nE},null,'9B6410');kv(10,2,'% esterilizado',{formula:`IF(C5=0,0,C8/C5)`,result:nG?nE/nG:0},PCT);
+  kv(11,2,'Hembras sin esterilizar',{formula:`COUNTIFS(${rg}C5:C${E(nG)},"Hembra",${rg}G5:G${E(nG)},"No")`,result:G.filter(g=>g.sexo==='Hembra'&&!g.esterilizado).length},null,'B03A37');kv(12,2,'Colonias',S.colonias.length);
+  const tIni=sum(S.subv.map(s=>s.importe)),tGas=sum(SV.map(x=>x.st.gastado)),propios=sum(S.gastos.map(x=>tot(x)-part(x))),totG=sum(S.gastos.map(tot));
+  sec(4,5,'Dinero');
+  kv(5,5,'Subvenciones concedidas',{formula:`SUM(Subvenciones!C5:C${E(SV.length)})`,result:tIni},MON);kv(6,5,'Gastado con subvención',{formula:`SUM(Subvenciones!F5:F${E(SV.length)})`,result:tGas},MON);kv(7,5,'Queda en subvenciones',{formula:`F5-F6`,result:tIni-tGas},MON,tIni-tGas<0?'B03A37':'2C7D5A');
+  kv(8,5,'Gastos registrados (total)',{formula:`SUM(Gastos!E5:E${E(X.length)})`,result:totG},MON);kv(9,5,'Pagado con subvención',{formula:`SUM(Gastos!F5:F${E(X.length)})`,result:sum(S.gastos.map(part))},MON);kv(10,5,'Aportación personal',{formula:`SUM(Gastos!G5:G${E(X.length)})`,result:propios},MON);
+  sec(14,2,'Contenido de este archivo');
+  [['Gatos','Registro individual con coste total de cada gato'],['Colonias','Totales por colonia y hembras sin esterilizar'],['Reproducción','Crías nacidas por mes y colonia (últimos 12 meses)'],['Gastos','Todos los gastos y quién los paga'],['Subvenciones','Importe concedido, gastado y saldo'],['Servicios subvención','Servicios que cubre cada subvención'],['Detalle subvención','Cada euro pagado con subvención'],['Catálogo','Conceptos de gasto y precios habituales']].forEach(([h,d],i)=>{const r=15+i;const a=ws.getCell(r,2),b=ws.getCell(r,3);a.value={text:h,hyperlink:`#'${h}'!A1`};a.font={bold:true,color:{argb:'FF'+DARK},underline:true};a.fill=fill(SOFT);a.border=box;a.alignment={indent:1};ws.mergeCells(r,3,r,6);b.value=d;b.font={color:{argb:'FF5A3D3D'}};b.border=box;b.alignment={indent:1};ws.getRow(r).height=20});
+  ws.pageSetup={orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:1,paperSize:9};
+  const buf=await wb.xlsx.writeBuffer();
+  return new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+function openExcel(){
+  const c=openSheet(ctl=>{
+    if(ctl.err)return`${head('Exportar a Excel')}<div class="warn">No se pudo generar el archivo (${esc(ctl.err)}). Si es la primera vez, comprueba la conexión e inténtalo de nuevo.</div><button class="btn block" style="margin-top:12px" data-a="excel">Reintentar</button>`;
+    if(!ctl.blob)return`${head('Exportar a Excel')}<div class="empty">${ic(12,'m')}<div>Preparando tu informe…</div></div>`;
+    const kb=Math.round(ctl.blob.size/1024);
+    return`${head('Excel listo ✓')}<div class="card"><div class="kv"><span>Archivo</span><b style="word-break:break-all">${esc(ctl.name)}</b></div><div class="kv"><span>Tamaño</span><b>${kb} KB</b></div><div class="kv"><span>Hojas</span><b>9</b></div></div>
+    <p style="color:var(--muted);font-weight:600;font-size:13px">Incluye gatos, colonias, reproducción, gastos, subvenciones y su detalle, con colores, filtros y totales. Las fotos no se incluyen.</p>
+    <button class="btn block" data-a="xlsDl">⬇ Descargar Excel</button>${navigator.canShare?`<button class="btn ghost block" style="margin-top:8px" data-a="xlsShare">📤 Compartir / guardar en…</button>`:''}`;
+  },{live:false});
+  c.name='Gatitos_copia_'+today()+'.xlsx';
+  const go=()=>{c.err=null;c.blob=null;c.render();buildExcel().then(b=>{c.blob=b;c.render()}).catch(e=>{console.error(e);c.err=String(e.message||e);c.render()})};
+  c.go=go;go();
 }
 /* ---------- acciones (clics) ---------- */
 let iconTarget=null;
@@ -506,6 +617,9 @@ const ACT={
   iconPick(d,t){const f=t.closest('form');const inp=f.icon;pickIcon(inp.value,n=>{inp.value=n;{const im=$('#iconPrev',f);if(im.dataset.foto!=='1')im.src=A.icons[n]}if(f.dataset.f==='gatoEdit')gatoAuto(f)})},
   navIcon(d){pickIcon(S.settings.nav[d.k],n=>{S.settings.nav[d.k]=n;changed()})},
   accent(d){S.settings.accent=d.v;applyTheme();changed()},banner(d){S.settings.banner=d.v;changed()},wall(d){S.settings.wall=d.v;S.settings.wallOn=true;applyTheme();changed()},wallOn(d,t){S.settings.wallOn=t.checked;applyTheme();changed()},
+  excel(d,t){const w=t.closest('.sheet-wrap');if(w&&w._ctl.go)w._ctl.go();else openExcel()},
+  xlsDl(d,t){const c=t.closest('.sheet-wrap')._ctl;try{const a=document.createElement('a');a.href=URL.createObjectURL(c.blob);a.download=c.name;document.body.appendChild(a);a.click();a.remove();toast('Descargando…')}catch(e){toast('No se pudo descargar; prueba Compartir')}},
+  xlsShare(d,t){const c=t.closest('.sheet-wrap')._ctl;const f=new File([c.blob],c.name,{type:c.blob.type});if(navigator.canShare&&navigator.canShare({files:[f]}))navigator.share({files:[f],title:c.name}).catch(()=>{});else toast('Este dispositivo no permite compartir archivos; usa Descargar')},
   export(){openExport()},import(){openImport()},
   copyJson(d,t){const j=t.closest('.sheet-wrap')._ctl.json;(navigator.clipboard?navigator.clipboard.writeText(j):Promise.reject()).then(()=>toast('Copiado ✓')).catch(()=>{const p=$('#exj');p.textContent=j;const r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);toast('Selecciona y copia el texto')})},
   async dlJson(d,t){try{const o=JSON.parse(t.closest('.sheet-wrap')._ctl.json);o._fotos={};for(const k of Object.keys(FOTOS)){const b=await(await fetch(FOTOS[k])).blob();o._fotos[k]=await new Promise(r=>{const fr=new FileReader();fr.onload=()=>r(fr.result);fr.readAsDataURL(b)})}
